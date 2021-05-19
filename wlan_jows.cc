@@ -127,19 +127,17 @@ SimulationHelper::PopulateArpCache ()
 int main (int argc, char *argv[])
 {
     uint32_t nSTA = 3;
+    uint32_t nSTA_background = 5;
     uint32_t packetSize = 1470;
     float simTime = 10; 
     Time appsStart = Seconds(0);
     float radius = 5.0;
     float calcStart = 0; 
     bool oneDest = true;
-    bool rtsCts = true;
-    bool A_VO = false;
-    bool VO = false; 
+    bool rtsCts = false;
     bool VI = false; 
     bool A_VI = false;
     bool BE = false; 
-    bool BK = false;
     double Mbps = 200;
     uint32_t seed = 1;
 
@@ -148,18 +146,16 @@ int main (int argc, char *argv[])
 
     CommandLine cmd;
     cmd.AddValue("nSTA", "Number of stations", nSTA);
+    cmd.AddValue("nSTA_background", "Number of background stations", nSTA_background);
     cmd.AddValue("packetSize", "Packet size [B]", packetSize);
     cmd.AddValue("simTime", "simulation time [s]", simTime);
     cmd.AddValue("calcStart", "start of results analysis [s]", calcStart);
     cmd.AddValue("radius", "Radius of area [m] to randomly place stations", radius);
     cmd.AddValue("oneDest", "use one traffic destination?", oneDest);
     cmd.AddValue("RTSCTS", "use RTS/CTS?", rtsCts);
-    cmd.AddValue("A_VO", "run A_VO traffic?", A_VO);
-    cmd.AddValue("VO", "run VO traffic?", VO);
     cmd.AddValue("VI", "run VI traffic?", VI);
     cmd.AddValue("A_VI", "run A_VI traffic?", A_VI);
     cmd.AddValue("BE", "run BE traffic?", BE);
-    cmd.AddValue("BK", "run BK traffic?", BK);
     cmd.AddValue("Mbps", "traffic generated per queue [Mbps]", Mbps);
     cmd.AddValue("seed", "Seed", seed);
     cmd.Parse(argc, argv);
@@ -172,9 +168,11 @@ int main (int argc, char *argv[])
   NodeContainer sta;
   sta.Create (nSTA+1);
 
+  NodeContainer sta_background;
+  sta_background.Create (nSTA_background);
 
 
-/* ======== Positioning / Mobility ======= */
+/* ======== Positioning / Mobility - VO stations ======= */
   
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
@@ -189,11 +187,24 @@ int main (int argc, char *argv[])
   mobility.Install (sta);
 
 
+/* ======== Positioning / Mobility - Backgound stations ======= */
+
+  Ptr<ListPositionAllocator> positionAlloc_background = CreateObject<ListPositionAllocator> ();
+  positionAlloc_background->Add (Vector (0.0, 0.0, 0.0));
+    for (uint32_t i = 0; i < nSTA_background; i++)
+        positionAlloc->Add(Vector(radius * sin(2 * M_PI * (float) i / (float) nSTA_background),
+                                  radius * cos(2 * M_PI * (float) i / (float) nSTA_background), 0.0));
+
+  MobilityHelper mobility_background;
+  mobility_background.SetPositionAllocator (positionAlloc_background);
+  mobility_background.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
+
+  mobility_background.Install (sta_background);
+
 
 /* ===== Propagation Model configuration ===== */
 
   YansWifiChannelHelper channel = YansWifiChannelHelper::Default ();
-
 
 
 /* ===== MAC and PHY configuration ===== */
@@ -231,6 +242,7 @@ int main (int argc, char *argv[])
 
 
   NetDeviceContainer staDevices = wifi.Install (phy, mac, sta);
+  NetDeviceContainer staDevices_background = wifi.Install (phy, mac, sta_background);
 
   Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Phy/ChannelWidth",
               UintegerValue(160)); //for 802.11n/ac - see http://mcsindex.com/
@@ -240,92 +252,70 @@ int main (int argc, char *argv[])
 
   InternetStackHelper stack;
   stack.Install (sta);
+  stack.Install (sta_background);
 
   Ipv4AddressHelper address;
 
   address.SetBase ("192.168.1.0", "255.255.255.0");
   Ipv4InterfaceContainer staIf;
   staIf = address.Assign (staDevices);
-
+  Ipv4InterfaceContainer staIf_background;
+  staIf_background = address.Assign (staDevices_background);
 
 
 /* ===== Setting applications ===== */
 
+  // https://www.eetimes.com/addressing-the-bandwidth-demands-of-iptv/
   DataRate dataRate = DataRate(1000000 * Mbps); // - BK 200 Mb/s
   DataRate dataRate_HD_MPEG4 = DataRate(1000000 * 6); // - high definision MPEG-4 6Mb/s
 
   uint32_t destinationSTANumber = nSTA; //for one common traffic destination
   Ptr<Node> dest = sta.Get (destinationSTANumber);
 
-  //Configure CBR traffic sources
+  //Configure CBR traffic sources - VO traffic
 
-    for (uint32_t i = 0; i < nSTA; i++) {
-        Ptr <Node> node = sta.Get(i);
+  for (uint32_t i = 0; i < nSTA; i++) {
+    Ptr <Node> node = sta.Get(i);
 
-        Ipv4Address destinationReverse = staIf.GetAddress(i);
-
-        if (A_VO) {
-            OnOffHelper onOffHelper_A_VO_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
-                                                                                 InetSocketAddress(destinationReverse,
-                                                                                                   1007), dataRate,
-                                                                                 packetSize, 7, appsStart,
-                                                                                 simulationTime);
-            onOffHelper_A_VO_rev.Install(dest);
-            PacketSinkHelper sink_A_VO("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1007));
-            sink_A_VO.Install(node);
-        }
-        if (VO) {
-            OnOffHelper onOffHelper_VO_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
-                                                                                 InetSocketAddress(destinationReverse,
-                                                                                                   1006), dataRate,
-                                                                                 packetSize, 6, appsStart,
-                                                                                 simulationTime);
-            onOffHelper_VO_rev.Install(dest);
-            PacketSinkHelper sink_VO("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1006));
-            sink_VO.Install(node);
-        }
-        if (VI) {
-            OnOffHelper onOffHelper_VI_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
-                                                                                 InetSocketAddress(destinationReverse,
-                                                                                                   1005), dataRate_HD_MPEG4,
-                                                                                 packetSize, 5, appsStart,
-                                                                                 simulationTime);
-            onOffHelper_VI_rev.Install(dest);
-            PacketSinkHelper sink_VI("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1005));
-            sink_VI.Install(node);
-        }
-        if (A_VI) {
-            OnOffHelper onOffHelper_A_VI_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
-                                                                                 InetSocketAddress(destinationReverse,
-                                                                                                   1004), dataRate,
-                                                                                 packetSize, 4, appsStart,
-                                                                                 simulationTime);
-            onOffHelper_A_VI_rev.Install(dest);
-            PacketSinkHelper sink_A_VI("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1004));
-            sink_A_VI.Install(node);
-        }
-        if (BE) {
-            OnOffHelper onOffHelper_BE_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
-                                                                                 InetSocketAddress(destinationReverse,
-                                                                                                   1000), dataRate,
-                                                                                 packetSize, 0, appsStart,
-                                                                                 simulationTime);
-            onOffHelper_BE_rev.Install(dest);
-            PacketSinkHelper sink_BE("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1000));
-            sink_BE.Install(node);
-        }
-        if (BK) {
-            OnOffHelper onOffHelper_BK_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
-                                                                                 InetSocketAddress(destinationReverse,
-                                                                                                   1001), dataRate,
-                                                                                 packetSize, 1, appsStart,
-                                                                                 simulationTime);
-            onOffHelper_BK_rev.Install(dest);
-            PacketSinkHelper sink_BK("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1001));
-            sink_BK.Install(node);
-        }
+    Ipv4Address destinationReverse = staIf.GetAddress(i);
+    if (VI) {
+        OnOffHelper onOffHelper_VI_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
+                                                                              InetSocketAddress(destinationReverse,
+                                                                                                1005), dataRate_HD_MPEG4,
+                                                                              packetSize, 5, appsStart,
+                                                                              simulationTime);
+        onOffHelper_VI_rev.Install(dest);
+        PacketSinkHelper sink_VI("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1005));
+        sink_VI.Install(node);
     }
+    if (A_VI) {
+        OnOffHelper onOffHelper_A_VI_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
+                                                                              InetSocketAddress(destinationReverse,
+                                                                                                1004), dataRate_HD_MPEG4,
+                                                                              packetSize, 4, appsStart,
+                                                                              simulationTime);
+        onOffHelper_A_VI_rev.Install(dest);
+        PacketSinkHelper sink_A_VI("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1004));
+        sink_A_VI.Install(node);
+    }
+  }
 
+  //Configure CBR traffic sources - Background traffic BE
+  for (uint32_t i = 0; i < nSTA_background; i++) {
+    Ptr <Node> node = sta_background.Get(i);
+    Ipv4Address destinationReverse = staIf_background.GetAddress(i);
+    if (BE) {
+        OnOffHelper onOffHelper_BE_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
+                                                                              InetSocketAddress(destinationReverse,
+                                                                                                1000), dataRate,
+                                                                              packetSize, 0, appsStart,
+                                                                              simulationTime);
+        onOffHelper_BE_rev.Install(dest);
+        PacketSinkHelper sink_BE("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1000));
+        sink_BE.Install(node);
+    }
+  }
+  
 
 /* ===== tracing configuration ====== */
 
