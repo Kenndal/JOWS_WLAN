@@ -139,7 +139,7 @@ int main (int argc, char *argv[])
     bool VI = false; 
     bool A_VI = false;
     bool BE = false; 
-    bool BK = true;
+    bool BK = false;
     double Mbps = 200;
     uint32_t seed = 1;
 
@@ -202,20 +202,22 @@ int main (int argc, char *argv[])
   phy.SetChannel (channel.Create ());
 
   WifiHelper wifi;
-  WifiMacHelper mac; //802.11a
-  // wifi.SetStandard (WIFI_PHY_STANDARD_80211a);
+  WifiMacHelper mac; //802.11ac
+  // wifi.SetStandard (WIFI_PHY_STANDARD_80211ac);
   wifi.SetStandard(WIFI_PHY_STANDARD_80211ac);
 
   //PHY parameters
-  phy.Set("Antennas", UintegerValue(1)); //[1-4] for 802.11n/ac - see http://mcsindex.com/
-  phy.Set("MaxSupportedTxSpatialStreams", UintegerValue(1)); //[1-4] for 802.11n/ac - see http://mcsindex.com/
-  phy.Set("MaxSupportedRxSpatialStreams", UintegerValue(1)); //[1-4] for 802.11n/ac - see http://mcsindex.com/
+  phy.Set("Antennas", UintegerValue(2)); //[1-4] for 802.11n/ac - see http://mcsindex.com/
+  phy.Set("MaxSupportedTxSpatialStreams", UintegerValue(2)); //[1-4] for 802.11n/ac - see http://mcsindex.com/
+  phy.Set("MaxSupportedRxSpatialStreams", UintegerValue(2)); //[1-4] for 802.11n/ac - see http://mcsindex.com/
 
   //MAC parameters
   //for complete list of available parameters - see Attributes on https://www.nsnam.org/doxygen/classns3_1_1_adhoc_wifi_mac.html#pri-methods
-  mac.SetType ("ns3::AdhocWifiMac",
-               "QosSupported", BooleanValue (true),
-               "Ssid", SsidValue (Ssid ("TEST")) );
+    mac.SetType("ns3::AdhocWifiMac",
+                "QosSupported", BooleanValue(true),
+                "Ssid", SsidValue(Ssid("TEST")),
+                "BK_MaxAmsduSize", UintegerValue(11398),
+                "AltEDCASupported", BooleanValue(true));
 
 
   //WiFi Remote Station Manager parameters 
@@ -249,40 +251,11 @@ int main (int argc, char *argv[])
 
 /* ===== Setting applications ===== */
 
-  DataRate dataRate = DataRate(1000000 * Mbps);
+  DataRate dataRate = DataRate(1000000 * Mbps); // - BK 200 Mb/s
+  DataRate dataRate_HD_MPEG4 = DataRate(1000000 * 6); // - high definision MPEG-4 6Mb/s
 
-  //Configure traffic destination (sink)
   uint32_t destinationSTANumber = nSTA; //for one common traffic destination
-  // Ipv4Address destination = staIf.GetAddress (destinationSTANumber);
   Ptr<Node> dest = sta.Get (destinationSTANumber);
-
-    // if (oneDest) {
-    //     if (A_VO) {
-    //         PacketSinkHelper sink_A_VO("ns3::UdpSocketFactory", InetSocketAddress(destination, 1007));
-    //         sink_A_VO.Install(dest);
-    //     }
-    //     if (VO) {
-    //         PacketSinkHelper sink_VO("ns3::UdpSocketFactory", InetSocketAddress(destination, 1006));
-    //         sink_VO.Install(dest);
-    //     }
-    //     if (VI) {
-    //         PacketSinkHelper sink_VI("ns3::UdpSocketFactory", InetSocketAddress(destination, 1005));
-    //         sink_VI.Install(dest);
-    //     }
-    //     if (A_VI) {
-    //         PacketSinkHelper sink_A_VI("ns3::UdpSocketFactory", InetSocketAddress(destination, 1004));
-    //         sink_A_VI.Install(dest);
-    //     }
-    //     if (BE) {
-    //         PacketSinkHelper sink_BE("ns3::TcpSocketFactory", InetSocketAddress(destination, 1000));
-    //         sink_BE.Install(dest);
-    //     }
-    //     if (BK) {
-    //         PacketSinkHelper sink_BK("ns3::TcpSocketFactory", InetSocketAddress(destination, 1001));
-    //         sink_BK.Install(dest);
-    //     }
-    // }
-
 
   //Configure CBR traffic sources
 
@@ -314,7 +287,7 @@ int main (int argc, char *argv[])
         if (VI) {
             OnOffHelper onOffHelper_VI_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
                                                                                  InetSocketAddress(destinationReverse,
-                                                                                                   1005), dataRate,
+                                                                                                   1005), dataRate_HD_MPEG4,
                                                                                  packetSize, 5, appsStart,
                                                                                  simulationTime);
             onOffHelper_VI_rev.Install(dest);
@@ -356,7 +329,7 @@ int main (int argc, char *argv[])
 
 /* ===== tracing configuration ====== */
 
-  //phy.EnablePcap ("out", nSTA-1, 0); // sniffing to PCAP file
+  // phy.EnablePcap ("out", nSTA-1, 0); // sniffing to PCAP file
 
   //AsciiTraceHelper ascii;
   //phy.EnableAsciiAll (ascii.CreateFileStream ("out.tr"));
