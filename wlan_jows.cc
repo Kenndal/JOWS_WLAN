@@ -172,7 +172,7 @@ int main (int argc, char *argv[])
   sta_background.Create (nSTA_background);
 
 
-/* ======== Positioning / Mobility - VO stations ======= */
+/* ======== Positioning / Mobility - IPTV stations ======= */
   
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
@@ -272,7 +272,7 @@ int main (int argc, char *argv[])
   uint32_t destinationSTANumber = nSTA; //for one common traffic destination
   Ptr<Node> dest = sta.Get (destinationSTANumber);
 
-  //Configure CBR traffic sources - VO traffic
+  //Configure CBR traffic sources - IPTV traffic
 
   for (uint32_t i = 0; i < nSTA; i++) {
     Ptr <Node> node = sta.Get(i);
