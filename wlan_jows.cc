@@ -29,6 +29,18 @@
 #include "ns3/flow-monitor-helper.h"
 #include "ns3/ipv4-flow-classifier.h"
 
+
+#include <iostream>
+#include <vector>
+#include <math.h>
+#include <string>
+#include <fstream>
+#include <string>
+#include <ctime>
+#include <iomanip>
+#include <sys/stat.h>
+
+using namespace std;
 using namespace ns3; 
 
 NS_LOG_COMPONENT_DEFINE ("wifi-qos-test");
@@ -120,6 +132,15 @@ SimulationHelper::PopulateArpCache ()
       }
 }
 
+bool fileExists(const std::string& filename)
+{
+    struct stat buf;
+    if (stat(filename.c_str(), &buf) != -1)
+    {
+        return true;
+    }
+    return false;
+}
 
 
 /* ===== main function ===== */
@@ -140,7 +161,10 @@ int main (int argc, char *argv[])
     bool BE = false; 
     double Mbps = 200;
     uint32_t seed = 1;
-
+    string vi_resolution = "HD";
+    bool vi_as_BE = false;
+    bool pcap = false;
+    bool xml = false; 
 
 /* ===== Command Line parameters ===== */
 
@@ -158,6 +182,8 @@ int main (int argc, char *argv[])
     cmd.AddValue("BE", "run BE traffic?", BE);
     cmd.AddValue("Mbps", "traffic generated per queue [Mbps]", Mbps);
     cmd.AddValue("seed", "Seed", seed);
+    cmd.AddValue("vi_resolution", "video resolution : HD or UHD", vi_resolution);
+    cmd.AddValue("vi_as_BE", "Set video as BE traffic", vi_as_BE);
     cmd.Parse(argc, argv);
 
   Time simulationTime = Seconds (simTime);
@@ -266,8 +292,31 @@ int main (int argc, char *argv[])
 /* ===== Setting applications ===== */
 
   // https://www.eetimes.com/addressing-the-bandwidth-demands-of-iptv/
+  // https://www.synopi.com/bandwidth-required-for-hd-fhd-4k-video/
+  
   DataRate dataRate = DataRate(1000000 * Mbps); // - BK 200 Mb/s
   DataRate dataRate_HD_MPEG4 = DataRate(1000000 * 6); // - high definision MPEG-4 6Mb/s
+  DataRate dataRate_UHD_MPEG4 = DataRate(1000000 * 25); // - high definision MPEG-4 6Mb/s
+  DataRate dataRate_VI;
+  // Set video resolution type
+  if (vi_resolution == "HD"){
+    dataRate_VI = dataRate_HD_MPEG4;
+  } else if (vi_resolution == "UHD"){
+    dataRate_VI = dataRate_UHD_MPEG4;
+  } else{
+    exit(0);
+  }
+
+  // Set tos value for VI
+  int vi_qos;
+  int a_vi_qos;
+  if (vi_as_BE){
+    vi_qos = 0;
+    a_vi_qos = 0;
+  }else {
+    vi_qos = 5;
+    a_vi_qos =4;
+  }
 
   uint32_t destinationSTANumber = nSTA; //for one common traffic destination
   Ptr<Node> dest = sta.Get (destinationSTANumber);
@@ -281,8 +330,8 @@ int main (int argc, char *argv[])
     if (VI) {
         OnOffHelper onOffHelper_VI_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
                                                                               InetSocketAddress(destinationReverse,
-                                                                                                1005), dataRate_HD_MPEG4,
-                                                                              packetSize, 5, appsStart,
+                                                                                                1005), dataRate_VI,
+                                                                              packetSize, vi_qos, appsStart,
                                                                               simulationTime);
         onOffHelper_VI_rev.Install(dest);
         PacketSinkHelper sink_VI("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1005));
@@ -291,8 +340,8 @@ int main (int argc, char *argv[])
     if (A_VI) {
         OnOffHelper onOffHelper_A_VI_rev = SimulationHelper::CreateOnOffHelper("ns3::UdpSocketFactory",
                                                                               InetSocketAddress(destinationReverse,
-                                                                                                1004), dataRate_HD_MPEG4,
-                                                                              packetSize, 4, appsStart,
+                                                                                                1004), dataRate_VI,
+                                                                              packetSize, a_vi_qos, appsStart,
                                                                               simulationTime);
         onOffHelper_A_VI_rev.Install(dest);
         PacketSinkHelper sink_A_VI("ns3::UdpSocketFactory", InetSocketAddress(destinationReverse, 1004));
@@ -318,9 +367,11 @@ int main (int argc, char *argv[])
   
 
 /* ===== tracing configuration ====== */
-
-  // phy.EnablePcap ("out", nSTA-1, 0); // sniffing to PCAP file
-
+  if(pcap){
+    phy.SetPcapDataLinkType (WifiPhyHelper::DLT_IEEE802_11_RADIO);
+    phy.EnablePcap ("out", nSTA-1, 0); // sniffing to PCAP file
+    phy.EnablePcap ("out_BE", nSTA_background, 0); // sniffing to PCAP file
+  }
   //AsciiTraceHelper ascii;
   //phy.EnableAsciiAll (ascii.CreateFileStream ("out.tr"));
   //phy.EnableAscii (ascii.CreateFileStream ("out.tr"), sta.Get (0)->GetDevice (0));
@@ -346,9 +397,23 @@ int main (int argc, char *argv[])
 /* ===== printing results ===== */
 
   monitor->CheckForLostPackets ();
+  if (xml){
+    monitor->SerializeToXmlFile ("out.xml", true, true); // sniffing to XML file
+  }
 
-  //monitor->SerializeToXmlFile ("out.xml", true, true); // sniffing to XML file
-  
+    std::string outputCsv = "wlan_project-vi_sta-"+std::to_string(nSTA)+"-"+vi_resolution+"-VI_as_BE-"+std::to_string(vi_as_BE)+"-BE_traffic-"+std::to_string(BE)+".csv";
+    ofstream myfile;
+    if (fileExists(outputCsv))
+    {
+	    myfile.open (outputCsv, ios::app);
+    }
+    else {
+        myfile.open (outputCsv, ios::app);  
+        myfile << "Timestamp,FlowSrc,FlowDst,Throughput,Delay,Jitter,Tx_Packets,Rx_Packets,Lost_packets" << std::endl;
+    }
+
+
+
   std::string proto;
   //initialize variables for overall results calculation
   uint64_t txBytes = 0, rxBytes = 0, txPackets = 0, rxPackets = 0, lostPackets = 0;
@@ -389,16 +454,43 @@ int main (int argc, char *argv[])
           //std::cout << "  Throughput:\t"   << flow->second.rxBytes * 8.0 / (flow->second.timeLastRxPacket.GetSeconds ()-flow->second.timeFirstTxPacket.GetSeconds ()) / 1000000  << " Mb/s" << std::endl;
           std::cout << "  Throughput:\t"   << flow->second.rxBytes * 8.0 / (simulationTime - Seconds (calcStart)).GetMicroSeconds ()  << " Mb/s" << std::endl;
           std::cout << "  Mean delay:\t"   << (double)(flow->second.delaySum / (flow->second.rxPackets)).GetMicroSeconds () / 1000 << " ms" << std::endl;    
-          if (flow->second.rxPackets > 1)
-            std::cout << "  Mean jitter:\t"  << (double)(flow->second.jitterSum / (flow->second.rxPackets - 1)).GetMicroSeconds () / 1000 << " ms" << std::endl;   
+          double mean_jitter = 0;
+          if (flow->second.rxPackets > 1){
+            mean_jitter = (double)(flow->second.jitterSum / (flow->second.rxPackets - 1)).GetMicroSeconds () / 1000;
+            std::cout << "  Mean jitter:\t"  << mean_jitter << " ms" << std::endl;   
+          }
           else
             std::cout << "  Mean jitter:\t---"   << std::endl;
+          auto time = std::time(nullptr); //Get timestamp
+          auto tm = *std::localtime(&time);
+          myfile << std::put_time(&tm, "%Y-%m-%d %H:%M") << ","
+          << t.sourceAddress << "/" << t.sourcePort << "," 
+          << t.destinationAddress << "/" << t.destinationPort << "," 
+          << flow->second.rxBytes * 8.0 / (simulationTime - Seconds (calcStart)).GetMicroSeconds () << "," 
+          << (double)(flow->second.delaySum / (flow->second.rxPackets)).GetMicroSeconds () / 1000 << "," 
+          << mean_jitter << ","
+          << flow->second.txPackets << "," 
+          << flow->second.rxPackets << "," 
+          << flow->second.lostPackets;
+          myfile << std::endl;
         }
       else
         {
           std::cout << "  Throughput:\t0 Mb/s" << std::endl;
           std::cout << "  Mean delay:\t---"    << std::endl;    
           std::cout << "  Mean jitter:\t---"   << std::endl;
+          auto time = std::time(nullptr); //Get timestamp
+          auto tm = *std::localtime(&time);
+          myfile << std::put_time(&tm, "%Y-%m-%d %H:%M") << ","
+          << t.sourceAddress << "/" << t.sourcePort << "," 
+          << t.destinationAddress << "/" << t.destinationPort << "," 
+          << "-" << "," 
+          << "-" << "," 
+          << "-" << "," 
+          << "-" << "," 
+          << "-" << "," 
+          << "-";
+          myfile << std::endl;
         }
 
       //increase variables for overall results calculation
@@ -412,6 +504,7 @@ int main (int argc, char *argv[])
       delaySum    += flow->second.delaySum;
       jitterSum   += flow->second.jitterSum;
     }
+  myfile.close();
 
 
   //print overall results
