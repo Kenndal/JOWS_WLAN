@@ -163,8 +163,9 @@ int main (int argc, char *argv[])
     uint32_t seed = 1;
     string vi_resolution = "HD";
     bool vi_as_BE = false;
-    bool pcap = false;
+    bool pcap = true;
     bool xml = false; 
+    string standard = "ac";
 
 /* ===== Command Line parameters ===== */
 
@@ -184,6 +185,7 @@ int main (int argc, char *argv[])
     cmd.AddValue("seed", "Seed", seed);
     cmd.AddValue("vi_resolution", "video resolution : HD or UHD", vi_resolution);
     cmd.AddValue("vi_as_BE", "Set video as BE traffic", vi_as_BE);
+    cmd.AddValue("standard", "Choose standard: n or ac", standard);
     cmd.Parse(argc, argv);
 
   Time simulationTime = Seconds (simTime);
@@ -198,7 +200,7 @@ int main (int argc, char *argv[])
   sta_background.Create (nSTA_background);
 
 
-/* ======== Positioning / Mobility - IPTV stations ======= */
+/* ======== Positioning / Mobility - VO stations ======= */
   
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
@@ -241,7 +243,14 @@ int main (int argc, char *argv[])
   WifiHelper wifi;
   WifiMacHelper mac; //802.11ac
   // wifi.SetStandard (WIFI_PHY_STANDARD_80211ac);
-  wifi.SetStandard(WIFI_PHY_STANDARD_80211ac);
+  if (standard == "ac")
+    wifi.SetStandard(WIFI_PHY_STANDARD_80211ac);
+  else if (standard == "n")
+    wifi.SetStandard(WIFI_PHY_STANDARD_80211n_5GHZ);
+  else{
+    cout << "Wrong standard...";
+    exit(0);
+  }
 
   //PHY parameters
   phy.Set("Antennas", UintegerValue(2)); //[1-4] for 802.11n/ac - see http://mcsindex.com/
@@ -321,7 +330,7 @@ int main (int argc, char *argv[])
   uint32_t destinationSTANumber = nSTA; //for one common traffic destination
   Ptr<Node> dest = sta.Get (destinationSTANumber);
 
-  //Configure CBR traffic sources - IPTV traffic
+  //Configure CBR traffic sources - VO traffic
 
   for (uint32_t i = 0; i < nSTA; i++) {
     Ptr <Node> node = sta.Get(i);
@@ -401,7 +410,7 @@ int main (int argc, char *argv[])
     monitor->SerializeToXmlFile ("out.xml", true, true); // sniffing to XML file
   }
 
-    std::string outputCsv = "wlan_project-vi_sta-"+std::to_string(nSTA)+"-"+vi_resolution+"-VI_as_BE-"+std::to_string(vi_as_BE)+"-BE_traffic-"+std::to_string(BE)+".csv";
+    std::string outputCsv = "wlan_project-"+standard+"-vi_sta-"+std::to_string(nSTA)+"-"+vi_resolution+"-VI_as_BE-"+std::to_string(vi_as_BE)+"-BE_traffic-"+std::to_string(BE)+".csv";
     ofstream myfile;
     if (fileExists(outputCsv))
     {
