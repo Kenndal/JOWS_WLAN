@@ -1,0 +1,2 @@
+Timestamp,FlowSrc,FlowDst,Throughput,Delay,Jitter,Tx_Packets,Rx_Packets,Lost_packets
+2021-05-29 12:29,192.168.1.2/49153,192.168.1.1/1005,6.10081,0.092,0.003,12727,12727,0

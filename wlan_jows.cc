@@ -142,6 +142,21 @@ bool fileExists(const std::string& filename)
     return false;
 }
 
+void showPosition(NodeContainer &Nodes) {
+
+    uint32_t NodeNumber = 0;
+
+    for(NodeContainer::Iterator nAP = Nodes.Begin (); nAP != Nodes.End (); ++nAP)
+    {
+      Ptr<Node> object = *nAP;
+      Ptr<MobilityModel> position = object->GetObject<MobilityModel> ();
+      NS_ASSERT (position != 0);
+      Vector pos = position->GetPosition ();
+      std::cout <<"Node "<< NodeNumber <<" has coordinates "<< "(" << pos.x << ", "<< pos.y <<", "<< pos.z <<")" << std::endl;
+      ++NodeNumber;
+    }
+}
+
 
 /* ===== main function ===== */
 
@@ -163,7 +178,7 @@ int main (int argc, char *argv[])
     uint32_t seed = 1;
     string vi_resolution = "HD";
     bool vi_as_BE = false;
-    bool pcap = true;
+    bool pcap = false;
     bool xml = false; 
     string standard = "ac";
 
@@ -214,20 +229,25 @@ int main (int argc, char *argv[])
 
   mobility.Install (sta);
 
+  showPosition(sta);
+
 
 /* ======== Positioning / Mobility - Backgound stations ======= */
 
   Ptr<ListPositionAllocator> positionAlloc_background = CreateObject<ListPositionAllocator> ();
   positionAlloc_background->Add (Vector (0.0, 0.0, 0.0));
     for (uint32_t i = 0; i < nSTA_background; i++)
-        positionAlloc->Add(Vector(radius * sin(2 * M_PI * (float) i / (float) nSTA_background),
-                                  radius * cos(2 * M_PI * (float) i / (float) nSTA_background), 0.0));
+        positionAlloc_background->Add(Vector(radius * sin(2 * M_PI * (float) i / (float) nSTA_background),
+                                             radius * cos(2 * M_PI * (float) i / (float) nSTA_background), 0.0));
+
 
   MobilityHelper mobility_background;
   mobility_background.SetPositionAllocator (positionAlloc_background);
   mobility_background.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 
   mobility_background.Install (sta_background);
+
+  showPosition(sta_background);
 
 
 /* ===== Propagation Model configuration ===== */
@@ -410,16 +430,16 @@ int main (int argc, char *argv[])
     monitor->SerializeToXmlFile ("out.xml", true, true); // sniffing to XML file
   }
 
-    std::string outputCsv = "wlan_project-"+standard+"-vi_sta-"+std::to_string(nSTA)+"-"+vi_resolution+"-VI_as_BE-"+std::to_string(vi_as_BE)+"-BE_traffic-"+std::to_string(BE)+".csv";
-    ofstream myfile;
-    if (fileExists(outputCsv))
-    {
-	    myfile.open (outputCsv, ios::app);
-    }
-    else {
-        myfile.open (outputCsv, ios::app);  
-        myfile << "Timestamp,FlowSrc,FlowDst,Throughput,Delay,Jitter,Tx_Packets,Rx_Packets,Lost_packets" << std::endl;
-    }
+  std::string outputCsv = "wlan_project-"+standard+"-vi_sta-"+std::to_string(nSTA)+"-"+vi_resolution+"-VI_as_BE-"+std::to_string(vi_as_BE)+"-BE_traffic-"+std::to_string(BE)+".csv";
+  ofstream myfile;
+  if (fileExists(outputCsv))
+  {
+    myfile.open (outputCsv, ios::app);
+  }
+  else {
+      myfile.open (outputCsv, ios::app);  
+      myfile << "Timestamp,FlowSrc,FlowDst,Throughput,Delay,Jitter,Tx_Packets,Rx_Packets,Lost_packets" << std::endl;
+  }
 
 
 
